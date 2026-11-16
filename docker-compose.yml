@@ -1,0 +1,6 @@
+name: threat_service
+
+include:
+  - ./threat_api/docker-compose.yml
+  - ./scanner/docker-compose.yml
+  - ./infra/docker-compose.yml

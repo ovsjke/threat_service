@@ -7,7 +7,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"threat_api/internal/entity"
+	"github.com/ovsjke/threat_service/threat_api/internal/entity"
 )
 
 type PostgresStorage struct {

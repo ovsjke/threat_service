@@ -1,0 +1,33 @@
+syntax = "proto3";
+
+package threat.v1;
+
+option go_package = "github.com/ovsjke/threat_service/contracts/gen/go/threat/v1;threatv1";
+
+import "google/protobuf/timestamp.proto";
+
+service ThreatService {
+  rpc GetThreat(GetThreatRequest) returns (Threat);
+  rpc CreateThreat(CreateThreatRequest) returns (Threat);
+}
+
+message GetThreatRequest {
+  string md5 = 1;
+}
+
+message CreateThreatRequest {
+  string md5 = 1;
+  string name = 2;
+  string description = 3;
+  string severity = 4;
+}
+
+message Threat {
+  string md5 = 1;
+  string name = 2;
+  string description = 3;
+  string severity = 4;
+
+  google.protobuf.Timestamp detected_at = 5;
+  google.protobuf.Timestamp updated_at = 6;
+}

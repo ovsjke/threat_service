@@ -1,18 +1,25 @@
-FROM golang:1.27.1-alpine AS build
+
+FROM golang:1.27-alpine AS build
 
 WORKDIR /src
-COPY go.mod go.sum ./
+COPY contracts ./contracts
+COPY threat_api ./threat_api
+
+WORKDIR /src/threat_api
+
+RUN go mod edit \
+    -replace=github.com/ovsjke/threat_service/contracts=../contracts
+
 RUN go mod download
-COPY . .
-RUN CGO_ENABLED=0 go build -o /out/app ./cmd/app
+
+RUN CGO_ENABLED=0 GOOS=linux go build -o /out/app ./cmd/app
 
 FROM alpine:3.22
-RUN apk add --no-cache ca-certificates && adduser -D app
+
 WORKDIR /app
 
-COPY --from=build --chown=app:app /out/app ./app
+COPY --from=build /out/app /app/app
 
-USER app
-EXPOSE 8080
+EXPOSE 8080 50051
 
-CMD ["./app"]
+CMD ["/app/app"]

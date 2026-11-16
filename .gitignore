@@ -2,4 +2,4 @@
 .git
 .DS_Store
 *.log
-nginx/certs/
+infra/nginx/certs/

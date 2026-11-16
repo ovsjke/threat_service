@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
-	"threat_api/internal/entity"
+	"github.com/ovsjke/threat_service/threat_api/internal/entity"
 )
 
 type mockThreatService struct {

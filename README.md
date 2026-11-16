@@ -25,9 +25,12 @@
 make up
 ```
 
-При первом запуске Makefile создаёт `.env` из `.env.example`, если файла ещё нет, и генерирует сертификат для локального HTTPS. Затем Compose запускает PostgreSQL, применяет миграции и поднимает Go-приложение с Nginx.
+При первом запуске Makefile создаёт `.env` из `.env.example`, если файла ещё нет, и генерирует сертификат для локального HTTPS. Затем Compose запускает PostgreSQL, применяет миграции и поднимает Threat API, Scanner, ClamAV и Nginx. Compose ждёт готовности
+ClamAV; при первом запуске загрузка сигнатур может занять несколько минут.
 
-API доступно по адресу **https://localhost**.
+API доступно по адресу **https://localhost**. Загрузка файла — `POST /scans`,
+проверки Scanner — `GET /health` и `GET /ready`. Порт Scanner `127.0.0.1:8082`
+и gRPC Threat API `127.0.0.1:50051` также доступны напрямую для разработки.
 
 Сертификат самоподписанный, поэтому браузер может предупреждать о недоверенном сертификате.
 
@@ -35,10 +38,10 @@ API доступно по адресу **https://localhost**.
 
 | Команда | Что делает |
 |---|---|
-| `make up` | Собирает и запускает приложение |
-| `make down` | Останавливает контейнеры, не удаляя данные основной БД |
-| `make logs` | Показывает логи приложения и Nginx |
-| `make test` | Запускает обычные Go-тесты без Docker |
+| `make up` | Собирает и запускает весь стек |
+| `make down` | Останавливает контейнеры, не удаляя данные основной БД и сигнатуры ClamAV |
+| `make logs` | Показывает логи Threat API, Scanner, ClamAV и Nginx |
+| `make test` | Запускает обычные Go-тесты всех модулей без Docker |
 | `make integration` | Запускает тесты репозитория на отдельной PostgreSQL |
 | `make e2e` | Проверяет API через HTTP с отдельным приложением и тестовой БД |
 | `make env` | Создаёт `.env` из `.env.example`, если его нет |
@@ -50,10 +53,24 @@ API доступно по адресу **https://localhost**.
 
 Все запросы отправляются через HTTPS. Для `curl` нужно указать локальный сертификат, так как он самоподписанный.
 
+**Сканировать файл — POST**
+
+```bash
+printf 'hello scanner\n' > /tmp/scanner-clean.txt
+curl --cacert infra/nginx/certs/localhost.crt \
+  -F 'file=@/tmp/scanner-clean.txt' https://localhost/scans
+```
+
+Scanner ограничивает размер файла по `SCANNER_MAX_FILE_BYTES` (по умолчанию 10 MiB).
+Nginx передаёт загрузку потоком без сохранения тела во временный файл.
+Его таймауты проксирования Scanner — 120 секунд; при увеличении
+`SCANNER_SCAN_TIMEOUT` свыше этого значения согласуйте их в `infra/nginx/nginx.conf`.
+Настройки Scanner и команды его E2E-тестов — в [scanner/README.md](scanner/README.md).
+
 **Создать запись — POST**
 
 ```bash
-curl --cacert nginx/certs/localhost.crt \
+curl --cacert infra/nginx/certs/localhost.crt \
   -X POST https://localhost/info \
   -H "Content-Type: application/json" \
   -d '{"md5":"d41d8cd98f00b204e9800998ecf8427e","name":"Trojan.Test","description":"Test threat","severity":"high"}'
@@ -62,14 +79,14 @@ curl --cacert nginx/certs/localhost.crt \
 **Получить запись — GET**
  
 ```bash
-curl --cacert nginx/certs/localhost.crt \
+curl --cacert infra/nginx/certs/localhost.crt \
   https://localhost/info/d41d8cd98f00b204e9800998ecf8427e
 ```
 
 **Обновить запись — PUT**
 
 ```bash
-curl --cacert nginx/certs/localhost.crt \
+curl --cacert infra/nginx/certs/localhost.crt \
   -X PUT https://localhost/info/d41d8cd98f00b204e9800998ecf8427e \
   -H "Content-Type: application/json" \
   -d '{"name":"Trojan.Updated","description":"Updated description","severity":"medium"}'

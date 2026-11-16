@@ -5,26 +5,17 @@ import (
 	"encoding/json"
 	"errors"
 	"github.com/go-chi/chi/v5"
-	"threat_api/internal/entity"
+	"github.com/ovsjke/threat_service/threat_api/internal/entity"
 	"log/slog"
 	"net/http"
 )
 
 type ThreatService interface {
-	GetByMD5(
-		ctx context.Context,
-		md5 string,
-	) (*entity.Threat, error)
+	GetByMD5( ctx context.Context,md5 string,) (*entity.Threat, error)
 
-	Update(
-		ctx context.Context,
-		threat *entity.Threat,
-	) (*entity.Threat, error)
+	Update(ctx context.Context,threat *entity.Threat,) (*entity.Threat, error)
 
-	Create(
-		ctx context.Context,
-		threat *entity.Threat,
-	) (*entity.Threat, error)
+	Create(ctx context.Context,threat *entity.Threat,) (*entity.Threat, error)
 }
 
 func WriteJSONResponse(w http.ResponseWriter, statusCode int, data any, log *slog.Logger) {

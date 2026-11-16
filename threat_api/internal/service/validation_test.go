@@ -1,7 +1,7 @@
 package service
 
 import (
-	"threat_api/internal/entity"
+	"github.com/ovsjke/threat_service/threat_api/internal/entity"
 	"testing"
 )
 

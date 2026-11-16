@@ -1,0 +1,7 @@
+.git
+.env*
+README.md
+**/*_test.go
+tests
+coverage*
+*.out

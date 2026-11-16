@@ -2,7 +2,7 @@ package service
 
 import (
 	"context"
-	"threat_api/internal/entity"
+	"github.com/ovsjke/threat_service/threat_api/internal/entity"
 	"strings"
 )
 
