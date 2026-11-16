@@ -3,6 +3,8 @@
 
 up: env cert
 	docker compose up -d --build --wait nginx
+	docker compose exec -T nginx nginx -t
+	docker compose exec -T nginx nginx -s reload
 	@echo "API: https://localhost/info/{md5}"
 	@echo "Scanner: https://localhost/scans"
 	@echo "Logs: make logs"
@@ -29,7 +31,8 @@ cert:
 	fi
 
 env:
-	@if [ ! -f .env ]; then \
+	@set -eu; \
+	if [ ! -f .env ]; then \
 		cp .env.example .env; \
 		echo "Created .env from .env.example"; \
 	fi
@@ -39,13 +42,12 @@ test:
 
 integration: env
 	@set -eu; \
-	set -a; . ./.env; set +a; \
-	: "$${TEST_DB_URL:?TEST_DB_URL is not set}"; \
 	trap 'docker compose --profile test --profile e2e rm -sf test_migrations test_db >/dev/null 2>&1 || true' EXIT; \
 	trap 'exit 130' INT; trap 'exit 143' TERM; \
 	docker compose --profile test up -d --wait test_db; \
 	docker compose --profile test run --rm test_migrations; \
-	(cd threat_api && go test -tags=integration -v ./internal/... -count=1)
+	test_db_address=$$(docker compose --profile test port test_db 5432); \
+	(cd threat_api && TEST_DB_URL="postgres://test:test@$$test_db_address/threats_test?sslmode=disable" go test -tags=integration -v ./internal/... -count=1)
 
 e2e: env
 	@set -eu; \

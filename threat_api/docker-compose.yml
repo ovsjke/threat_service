@@ -1,6 +1,7 @@
 services:
   db:
     image: postgres:16
+    restart: unless-stopped
     environment:
       POSTGRES_DB: ${DB_NAME}
       POSTGRES_USER: ${DB_USER}
@@ -28,6 +29,7 @@ services:
         condition: service_healthy
 
   app_api:
+    restart: unless-stopped
     build:
       context: ..
       dockerfile: threat_api/Dockerfile
@@ -72,7 +74,7 @@ services:
       POSTGRES_USER: test
       POSTGRES_PASSWORD: test
     ports:
-      - "127.0.0.1:5433:5432"
+      - "127.0.0.1:${TEST_DB_PORT:-5433}:5432"
     tmpfs:
       - /var/lib/postgresql/data
     healthcheck:

@@ -12,7 +12,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-	"kaspersky_testing/internal/entity"
+	"github.com/ovsjke/threat_service/threat_api/internal/entity"
 )
 
 func testPool(t *testing.T) *pgxpool.Pool {
