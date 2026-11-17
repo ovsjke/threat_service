@@ -20,7 +20,7 @@ import (
 )
 
 func main() {
-	log := slog.New(slog.NewJSONHandler(os.Stdout, nil))
+	log := slog.New(slog.NewJSONHandler(os.Stdout, nil)).With("service", "scanner")
 	if err := run(log); err != nil {
 		log.Error("scanner stopped with error", "error", err)
 		os.Exit(1)
@@ -57,7 +57,7 @@ func run(log *slog.Logger) error {
 	}
 	done := make(chan error, 1)
 	go func() {
-		log.Info("starting scanner", "address", srv.Addr, "clamav", cfg.ClamAVAddress)
+		log.Info("starting scanner", "address", srv.Addr, "clamav", cfg.ClamAVAddress, "threat_catalog", cfg.ThreatGRPCAddress)
 		done <- srv.ListenAndServe()
 	}()
 	select {

@@ -32,6 +32,14 @@ func writeError(w http.ResponseWriter, status int, code, message string) {
 	writeJSON(w, status, map[string]any{"error": map[string]string{"code": code, "message": message}})
 }
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	start := time.Now()
+	response := &statusWriter{ResponseWriter: w, status: http.StatusOK}
+	w = response
+	defer func() {
+		h.Log.InfoContext(r.Context(), "HTTP request", "method", r.Method,
+			"path", r.URL.Path, "status", response.status,
+			"duration_ms", time.Since(start).Milliseconds())
+	}()
 	switch r.URL.Path {
 	case "/health":
 		if r.Method == http.MethodGet {
@@ -44,6 +52,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			ctx, cancel := context.WithTimeout(r.Context(), h.Timeout)
 			defer cancel()
 			if err := h.Service.Ready(ctx); err != nil {
+				h.Log.WarnContext(ctx, "ClamAV is not ready", "error", err)
 				writeError(w, 503, "engine_unavailable", "ClamAV is not ready")
 				return
 			}
@@ -125,7 +134,13 @@ func (h *Handler) scan(w http.ResponseWriter, r *http.Request) {
 		h.failure(w, ctx, ctx.Err())
 		return
 	}
-	h.Log.Info("scan completed", "size", result.Size, "verdict", result.Verdict, "duration_ms", result.DurationMS)
+	if result.CatalogError != "" {
+		h.Log.WarnContext(ctx, "threat catalog failed", "md5", result.MD5,
+			"catalog_status", result.CatalogStatus, "error", result.CatalogError)
+	}
+	h.Log.InfoContext(ctx, "scan completed", "md5", result.MD5, "size", result.Size,
+		"verdict", result.Verdict, "signature", result.Signature,
+		"catalog_status", result.CatalogStatus, "duration_ms", result.DurationMS)
 	writeJSON(w, 200, result)
 }
 func (h *Handler) failure(w http.ResponseWriter, ctx context.Context, err error) {
@@ -136,6 +151,7 @@ func (h *Handler) failure(w http.ResponseWriter, ctx context.Context, err error)
 	// context timer fires. Preserve timeout classification in either order.
 	deadline, hasDeadline := ctx.Deadline()
 	expired := hasDeadline && !time.Now().Before(deadline)
+	level := slog.LevelWarn
 	switch {
 	case expired, errors.Is(ctx.Err(), context.DeadlineExceeded), errors.Is(err, context.DeadlineExceeded):
 		writeError(w, 504, "scan_timeout", "Scan deadline exceeded")
@@ -153,7 +169,8 @@ func (h *Handler) failure(w http.ResponseWriter, ctx context.Context, err error)
 	case errors.As(err, &upload):
 		writeError(w, 400, "invalid_upload", "Upload is incomplete or malformed")
 	default:
-		h.Log.Error("scan failed", "error", err)
+		level = slog.LevelError
 		writeError(w, 502, "engine_error", "ClamAV did not complete the scan")
 	}
+	h.Log.Log(ctx, level, "scan failed", "error", err)
 }
