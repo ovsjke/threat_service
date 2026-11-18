@@ -21,6 +21,8 @@ import (
 	"github.com/ovsjke/threat_service/threat_api/internal/grpcserver"
 	threatv1 "github.com/ovsjke/threat_service/contracts/gen/go/threat/v1"
 	"google.golang.org/grpc"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"github.com/ovsjke/threat_service/threat_api/internal/metrics"
 	)
 
 func main() {
@@ -51,7 +53,9 @@ func run(log *slog.Logger) error {
 
 	grpcHandler := grpcserver.New(threatService)
 
-	grpcSrv := grpc.NewServer()
+	grpcSrv := grpc.NewServer(
+		grpc.UnaryInterceptor(metrics.UnaryServerInterceptor),
+	)
 
 	threatv1.RegisterThreatServiceServer(
 		grpcSrv,
@@ -67,7 +71,9 @@ func run(log *slog.Logger) error {
 	r := chi.NewRouter()
 
 	r.Use(middleware.Logger)
+	r.Use(metrics.HTTPMiddleware)
 	r.Use(middleware.Recoverer)
+	r.Handle("/metrics", promhttp.Handler())
 	r.NotFound(func(w http.ResponseWriter, req *http.Request) {
 		handler.WriteError(w, http.StatusNotFound, "Not found", "Requested endpoint does not exist", log)
 	})

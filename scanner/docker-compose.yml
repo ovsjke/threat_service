@@ -14,13 +14,19 @@ services:
       SCANNER_SHUTDOWN_TIMEOUT: ${SCANNER_SHUTDOWN_TIMEOUT:-15s}
       SCANNER_READ_HEADER_TIMEOUT: ${SCANNER_READ_HEADER_TIMEOUT:-5s}
       SCANNER_IDLE_TIMEOUT: ${SCANNER_IDLE_TIMEOUT:-60s}
-      THREAT_GRPC_ADDR: app_api:50051
+      THREAT_GRPC_ADDR: ${THREAT_GRPC_ADDR:-app_api:50051}
     ports:
       - "127.0.0.1:${SCANNER_HTTP_PORT:-8082}:8082"
     networks: [scanner, default]
     depends_on:
       clamav:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:8082/ready"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 10s
     stop_grace_period: ${SCANNER_STOP_GRACE_PERIOD:-20s}
     restart: unless-stopped
 

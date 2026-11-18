@@ -1,10 +1,14 @@
 services:
   db:
     image: postgres:16
+    command:
+      - postgres
+      - -c
+      - shared_preload_libraries=pg_stat_statements
     restart: unless-stopped
     environment:
-      POSTGRES_DB: ${DB_NAME}
-      POSTGRES_USER: ${DB_USER}
+      POSTGRES_DB: ${DB_NAME:-mydatabase}
+      POSTGRES_USER: ${DB_USER:-kaspersky}
       POSTGRES_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in .env}
     expose:
       - "5432"
@@ -17,13 +21,14 @@ services:
       retries: 20
 
   migrations:
-    image: migrate/migrate
-    volumes:
-      - ./migrations:/migrations:ro
+    image: migrate/migrate:v4.20.1
     command:
       - -path=/migrations
-      - -database=${DB_URL}
+      - -database=${DB_URL:?Set DB_URL in .env}
       - up
+    restart: "no"
+    volumes:
+      - ./migrations:/migrations:ro
     depends_on:
       db:
         condition: service_healthy
@@ -33,13 +38,22 @@ services:
     build:
       context: ..
       dockerfile: threat_api/Dockerfile
-    env_file:
-      - ../.env
+    environment:
+      API_PORT: ":8080"
+      API_URL: ${API_URL:-https://localhost}
+      DB_URL: ${DB_URL:?Set DB_URL in .env}
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:8080/metrics"]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+      start_period: 10s
     expose:
       - "8080"
       - "50051"
     ports:
-    - "127.0.0.1:50051:50051"
+    - "127.0.0.1:${API_GRPC_HOST_PORT:-50051}:50051"
+    - "127.0.0.1:${API_HTTP_HOST_PORT:-8080}:8080"
     depends_on:
       db:
         condition: service_healthy
@@ -54,10 +68,10 @@ services:
       - e2e
     environment:
       API_PORT: ":8080"
-      API_URL: "http://localhost:8081"
+      API_URL: "http://e2e_app:8080"
       DB_URL: "postgres://test:test@test_db:5432/threats_test?sslmode=disable"
     ports:
-      - "127.0.0.1:8081:8080"
+      - "127.0.0.1:${E2E_HOST_PORT:-8081}:8080"
     depends_on:
       test_db:
         condition: service_healthy
@@ -84,7 +98,7 @@ services:
       retries: 20
 
   test_migrations:
-    image: migrate/migrate
+    image: migrate/migrate:v4.20.1
     profiles:
       - test
       - e2e

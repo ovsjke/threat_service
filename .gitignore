@@ -3,3 +3,7 @@
 .DS_Store
 *.log
 infra/nginx/certs/
+**/.env.*
+!**/.env.example
+*.key
+*.pem

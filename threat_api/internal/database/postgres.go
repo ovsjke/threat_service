@@ -13,15 +13,15 @@ type Repository struct {
 func Open(ctx context.Context, databaseURL string) (*Repository, error) {
 	c, err := pgxpool.ParseConfig(databaseURL)
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse database URL: %w", err)
+		return nil, fmt.Errorf("failed to parse database configuration")
 	}
 	pool, err := pgxpool.NewWithConfig(ctx, c)
 	if err != nil {
-		return nil, fmt.Errorf("failed to connect to database: %w", err)
+		return nil, fmt.Errorf("failed to initialize database pool")
 	}
 	if err = pool.Ping(ctx); err != nil {
 		pool.Close()
-		return nil, fmt.Errorf("failed to ping database: %w", err)
+		return nil, fmt.Errorf("failed to ping database (check connectivity and credentials)")
 	}
 	return &Repository{Pool: pool}, nil
 }
