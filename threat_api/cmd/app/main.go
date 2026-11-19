@@ -6,24 +6,25 @@ import (
 	"fmt"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	threatv1 "github.com/ovsjke/threat_service/contracts/gen/go/threat/v1"
 	"github.com/ovsjke/threat_service/threat_api/internal/config"
 	"github.com/ovsjke/threat_service/threat_api/internal/database"
+	"github.com/ovsjke/threat_service/threat_api/internal/grpcserver"
 	"github.com/ovsjke/threat_service/threat_api/internal/handler"
+	"github.com/ovsjke/threat_service/threat_api/internal/metrics"
 	"github.com/ovsjke/threat_service/threat_api/internal/repository"
 	"github.com/ovsjke/threat_service/threat_api/internal/service"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"github.com/redis/go-redis/v9"
+	"google.golang.org/grpc"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
-	"net"
-	"github.com/ovsjke/threat_service/threat_api/internal/grpcserver"
-	threatv1 "github.com/ovsjke/threat_service/contracts/gen/go/threat/v1"
-	"google.golang.org/grpc"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
-	"github.com/ovsjke/threat_service/threat_api/internal/metrics"
-	)
+)
 
 func main() {
 	var log *slog.Logger = slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}))
@@ -47,8 +48,50 @@ func run(log *slog.Logger) error {
 		return err
 	}
 	defer repo.Pool.Close()
+
 	pgRepo := repository.NewPostgresStorage(repo.Pool)
-	threatService := service.NewThreatService(pgRepo)
+
+	var threatRepo service.ThreatRepository = pgRepo
+
+	if config.ThreatCacheEnabled {
+		redisClient := redis.NewClient(&redis.Options{
+			Addr:         config.RedisAddr,
+			DialTimeout:  200 * time.Millisecond,
+			ReadTimeout:  100 * time.Millisecond,
+			WriteTimeout: 100 * time.Millisecond,
+
+			MaxRetries: -1,
+		})
+		defer redisClient.Close()
+
+		pingCtx, cancel := context.WithTimeout(
+			ctx,
+			500*time.Millisecond,
+		)
+		pingErr := redisClient.Ping(pingCtx).Err()
+		cancel()
+
+		if pingErr != nil {
+			log.Warn(
+				"Redis unavailable at startup; using fallback",
+				"error", pingErr,
+			)
+		} else {
+			log.Info("Redis connected")
+		}
+
+		threatRepo = repository.NewCachedThreatStorage(
+			pgRepo,
+			redisClient,
+			config.ThreatCacheTTL,
+			log,
+		)
+
+		log.Info("Threat cache enabled")
+	}
+
+	threatService := service.NewThreatService(threatRepo)
+
 	threatHandler := handler.NewThreatHandler(threatService, log)
 
 	grpcHandler := grpcserver.New(threatService)
@@ -81,11 +124,11 @@ func run(log *slog.Logger) error {
 	srv := &http.Server{
 		Addr:              config.ApiPort,
 		Handler:           r,
-		ReadHeaderTimeout: 5 * time.Second,
-		ReadTimeout:       15 * time.Second,
-		WriteTimeout:      120 * time.Second,
-		IdleTimeout:       60 * time.Second}
-	
+		ReadHeaderTimeout: config.ReadHeaderTimeout,
+		ReadTimeout:       config.ReadTimeout,
+		WriteTimeout:      config.WriteTimeout,
+		IdleTimeout:       config.IdleTimeout}
+
 	done := make(chan error, 2)
 
 	// Запускаем HTTP-сервер.
@@ -132,7 +175,7 @@ func run(log *slog.Logger) error {
 	// Останавливаем HTTP и gRPC параллельно.
 	shutdownCtx, cancel := context.WithTimeout(
 		context.Background(),
-		5*time.Second,
+		config.ShutdownTimeout,
 	)
 	defer cancel()
 

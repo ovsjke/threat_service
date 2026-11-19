@@ -4,3 +4,17 @@
 **/.DS_Store
 **/*.log
 infra/nginx/certs
+
+**/.git
+**/certs
+**/*.key
+**/*.pem
+**/*.crt
+**/*.test
+**/*.out
+**/*.prof
+**/*.dump
+**/*.backup
+**/*.sql.gz
+loadtests
+**/coverage

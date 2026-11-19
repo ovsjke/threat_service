@@ -194,3 +194,60 @@ func TestUnavailable(t *testing.T) {
 		t.Fatal("ping succeeded without clamd")
 	}
 }
+
+func TestVersion(t *testing.T) {
+	want := "ClamAV 1.4.6/28188/Thu Nov 19 2026"
+
+	address := fakeServer(t, func(conn net.Conn) {
+		command := make([]byte, len("zVERSION\x00"))
+
+		if _, err := io.ReadFull(conn, command); err != nil {
+			t.Errorf("read command: %v", err)
+			return
+		}
+
+		if string(command) != "zVERSION\x00" {
+			t.Errorf("unexpected command: %q", command)
+			return
+		}
+
+		_, _ = io.WriteString(conn, want+"\x00")
+	})
+
+	client := Client{
+		Address:     address,
+		DialTimeout: time.Second,
+		Timeout:     time.Second,
+	}
+
+	version, err := client.Version(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if version != want {
+		t.Fatalf("got %q, want %q", version, want)
+	}
+}
+
+func TestVersionUnavailable(t *testing.T) {
+	address := fakeServer(t, func(conn net.Conn) {
+		command := make([]byte, len("zVERSION\x00"))
+		_, _ = io.ReadFull(conn, command)
+
+		_, _ = io.WriteString(
+			conn,
+			"COMMAND UNAVAILABLE\x00",
+		)
+	})
+
+	client := Client{
+		Address:     address,
+		DialTimeout: time.Second,
+		Timeout:     time.Second,
+	}
+
+	if _, err := client.Version(context.Background()); err == nil {
+		t.Fatal("expected error for unavailable VERSION command")
+	}
+}

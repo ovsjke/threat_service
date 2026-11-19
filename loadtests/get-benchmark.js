@@ -33,8 +33,6 @@ export const options = {
   'p(99)',
 ],
 };
-
-// Детерминированное перемешивание чисел.
 function mix32(x) {
   x = Math.imul(x ^ (x >>> 16), 0x7feb352d);
   x = Math.imul(x ^ (x >>> 15), 0x846ca68b);
@@ -43,8 +41,6 @@ function mix32(x) {
 
 export default function () {
   const iteration = exec.scenario.iterationInTest;
-
-  // Доля каждой группы повторяется каждые 100 итераций.
   const bucket = (iteration * 37 + 17) % 100;
   const randomValue = mix32(iteration + 12345);
 

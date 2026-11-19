@@ -17,6 +17,12 @@ type Config struct {
 	MaxConcurrent                                            int
 	ScanTimeout, DialTimeout, EngineTimeout, ShutdownTimeout time.Duration
 	ReadHeaderTimeout, IdleTimeout                           time.Duration
+	RedisAddr                                                string
+	ScannerCacheEnabled                                      bool
+	ScannerCacheTTL                                          time.Duration
+	ScannerCacheRedisTimeout                                 time.Duration
+	ScannerCachePolicyVersion                                string
+	ScannerCacheVersionTimeout                               time.Duration
 }
 
 func Load() (Config, error) {
@@ -57,6 +63,59 @@ func Load() (Config, error) {
 			}
 			*target = d
 		}
+	}
+
+	c.RedisAddr = os.Getenv("REDIS_ADDR")
+	if c.RedisAddr == "" {
+		c.RedisAddr = "redis:6379"
+	}
+
+	if _, _, err := net.SplitHostPort(c.RedisAddr); err != nil {
+		return c, fmt.Errorf("invalid REDIS_ADDR: %w", err)
+	}
+
+	if v := os.Getenv("SCANNER_CACHE_ENABLED"); v != "" {
+		enabled, err := strconv.ParseBool(v)
+		if err != nil {
+			return c, fmt.Errorf("invalid SCANNER_CACHE_ENABLED: %w", err)
+		}
+		c.ScannerCacheEnabled = enabled
+	}
+
+	c.ScannerCacheTTL = time.Hour
+	if v := os.Getenv("SCANNER_CACHE_TTL"); v != "" {
+		ttl, err := time.ParseDuration(v)
+		if err != nil || ttl <= 0 || ttl > 24*time.Hour {
+			return c, fmt.Errorf("invalid SCANNER_CACHE_TTL")
+		}
+		c.ScannerCacheTTL = ttl
+	}
+
+	c.ScannerCacheRedisTimeout = 80 * time.Millisecond
+	if v := os.Getenv("SCANNER_CACHE_REDIS_TIMEOUT"); v != "" {
+		timeout, err := time.ParseDuration(v)
+		if err != nil || timeout <= 0 || timeout > time.Second {
+			return c, fmt.Errorf("invalid SCANNER_CACHE_REDIS_TIMEOUT")
+		}
+		c.ScannerCacheRedisTimeout = timeout
+	}
+
+	c.ScannerCachePolicyVersion = os.Getenv("SCANNER_CACHE_POLICY_VERSION")
+	if c.ScannerCachePolicyVersion == "" {
+		c.ScannerCachePolicyVersion = "v1"
+	}
+
+	c.ScannerCacheVersionTimeout = 500 * time.Millisecond
+
+	if v := os.Getenv("SCANNER_CACHE_VERSION_TIMEOUT"); v != "" {
+		timeout, err := time.ParseDuration(v)
+		if err != nil || timeout <= 0 || timeout > 5*time.Second {
+			return c, fmt.Errorf(
+				"invalid SCANNER_CACHE_VERSION_TIMEOUT",
+			)
+		}
+
+		c.ScannerCacheVersionTimeout = timeout
 	}
 	return c, nil
 }

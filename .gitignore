@@ -7,3 +7,17 @@ infra/nginx/certs/
 !**/.env.example
 *.key
 *.pem
+/loadtests/fixtures/generated/
+
+# Local build, coverage and database artifacts
+**/.env
+*.crt
+*.test
+*.out
+coverage/
+*.prof
+*.sql.gz
+*.dump
+*.backup
+/threat_api/app
+/scanner/scanner

@@ -1,6 +1,7 @@
 package scanning
 
 import (
+	"bytes"
 	"context"
 	"crypto/md5"
 	"crypto/sha256"
@@ -63,25 +64,6 @@ func NewWithCatalog(engine Engine, catalog ThreatCatalog, maxBytes int64, concur
 }
 func (s *Service) Ready(ctx context.Context) error { return s.engine.Ping(ctx) }
 
-// sizeReader probes one byte beyond the limit; that byte is never sent to clamd.
-type sizeReader struct {
-	source    io.Reader
-	max, size int64
-}
-
-func (r *sizeReader) Read(p []byte) (int, error) {
-	remaining := r.max - r.size
-	if int64(len(p)) > remaining+1 {
-		p = p[:remaining+1]
-	}
-	n, err := r.source.Read(p)
-	r.size += int64(n)
-	if r.size > r.max {
-		return 0, ErrTooLarge
-	}
-	return n, err
-}
-
 func (s *Service) Scan(ctx context.Context, source io.Reader) (Result, error) {
 	if err := ctx.Err(); err != nil {
 		return Result{}, err
@@ -92,26 +74,92 @@ func (s *Service) Scan(ctx context.Context, source io.Reader) (Result, error) {
 	default:
 		return Result{}, ErrBusy
 	}
+
 	start := time.Now()
-	limited := &sizeReader{source: source, max: s.maxBytes}
-	md5Hash, shaHash := md5.New(), sha256.New()
+
+	var fileMD5 string
+	var fileSHA256 string
+	var fileSize int64
+
 	result, err := func() (clamav.Result, error) {
-		defer func() { <-s.slots }()
-		return s.engine.Scan(ctx, io.TeeReader(limited, io.MultiWriter(md5Hash, shaHash)))
+		defer func() {
+			<-s.slots
+		}()
+
+		data, err := io.ReadAll(
+			io.LimitReader(source, s.maxBytes+1),
+		)
+
+		if err != nil {
+			if ctx.Err() != nil {
+				return clamav.Result{}, ctx.Err()
+			}
+			return clamav.Result{}, &clamav.UploadError{
+				Err: err,
+			}
+		}
+
+		if err := ctx.Err(); err != nil {
+			return clamav.Result{}, err
+		}
+
+		if int64(len(data)) > s.maxBytes {
+			return clamav.Result{}, ErrTooLarge
+		}
+
+		if len(data) == 0 {
+			return clamav.Result{}, ErrEmpty
+		}
+
+		md5Sum := md5.Sum(data)
+		shaSum := sha256.Sum256(data)
+
+		fileMD5 = hex.EncodeToString(md5Sum[:])
+		fileSHA256 = hex.EncodeToString(shaSum[:])
+		fileSize = int64(len(data))
+
+		if hashed, ok := s.engine.(interface {
+			ScanHashed(
+				context.Context,
+				[]byte,
+				string,
+			) (clamav.Result, error)
+		}); ok {
+			return hashed.ScanHashed(
+				ctx,
+				data,
+				fileSHA256,
+			)
+		}
+
+		return s.engine.Scan(
+			ctx,
+			bytes.NewReader(data),
+		)
+
 	}()
+
 	if ctx.Err() != nil {
 		return Result{}, ctx.Err()
 	}
+
 	if err != nil {
 		return Result{}, err
 	}
-	if limited.size == 0 {
-		return Result{}, ErrEmpty
-	}
+
 	if result.Verdict != "clean" && result.Verdict != "infected" {
 		return Result{}, errors.New("invalid engine verdict")
 	}
-	out := Result{MD5: hex.EncodeToString(md5Hash.Sum(nil)), SHA256: hex.EncodeToString(shaHash.Sum(nil)), Size: limited.size, Verdict: result.Verdict, Signature: result.Signature, DurationMS: time.Since(start).Milliseconds()}
+
+	out := Result{
+		MD5:        fileMD5,
+		SHA256:     fileSHA256,
+		Size:       fileSize,
+		Verdict:    result.Verdict,
+		Signature:  result.Signature,
+		DurationMS: time.Since(start).Milliseconds(),
+	}
+
 	if s.catalog == nil {
 		return out, nil
 	}
@@ -120,8 +168,6 @@ func (s *Service) Scan(ctx context.Context, source io.Reader) (Result, error) {
 	if errors.Is(err, ErrThreatNotFound) {
 		out.CatalogStatus = "not_found"
 		if out.Verdict == "infected" {
-			// ClamAV gives a signature, not a severity rating. Use a conservative
-			// default until a curator enriches the automatically created entry.
 			threat, err = s.catalog.Create(ctx, Threat{MD5: out.MD5, Name: out.Signature,
 				Description: "Detected by ClamAV", Severity: "medium"})
 			out.CatalogStatus = "created"

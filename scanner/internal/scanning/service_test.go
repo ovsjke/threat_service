@@ -81,3 +81,36 @@ func TestEngineError(t *testing.T) {
 		t.Fatalf("%v", err)
 	}
 }
+
+func TestTooLargeFileNeverReachesEngine(t *testing.T) {
+	engineCalled := false
+
+	engine := testEngine{
+		scan: func(
+			_ context.Context,
+			_ io.Reader,
+		) (clamav.Result, error) {
+			engineCalled = true
+			return clamav.Result{Verdict: "clean"}, nil
+		},
+	}
+
+	service := New(engine, 3, 1)
+
+	_, err := service.Scan(
+		context.Background(),
+		strings.NewReader("abcd"),
+	)
+
+	if !errors.Is(err, ErrTooLarge) {
+		t.Fatalf("expected ErrTooLarge, got %v", err)
+	}
+
+	if engineCalled {
+		t.Fatal("oversized file reached ClamAV")
+	}
+
+	if len(service.slots) != 0 {
+		t.Fatal("scanner slot leaked")
+	}
+}

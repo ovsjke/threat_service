@@ -5,3 +5,10 @@ README.md
 tests
 coverage*
 *.out
+**/certs
+**/*.key
+**/*.pem
+**/*.crt
+**/*.dump
+**/*.backup
+**/*.sql.gz

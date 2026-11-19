@@ -34,6 +34,7 @@ services:
         condition: service_healthy
 
   app_api:
+    stop_grace_period: ${API_STOP_GRACE_PERIOD:-10s}
     restart: unless-stopped
     build:
       context: ..
@@ -41,7 +42,15 @@ services:
     environment:
       API_PORT: ":8080"
       API_URL: ${API_URL:-https://localhost}
+      API_READ_HEADER_TIMEOUT: ${API_READ_HEADER_TIMEOUT:-5s}
+      API_READ_TIMEOUT: ${API_READ_TIMEOUT:-15s}
+      API_WRITE_TIMEOUT: ${API_WRITE_TIMEOUT:-120s}
+      API_IDLE_TIMEOUT: ${API_IDLE_TIMEOUT:-60s}
+      API_SHUTDOWN_TIMEOUT: ${API_SHUTDOWN_TIMEOUT:-5s}
       DB_URL: ${DB_URL:?Set DB_URL in .env}
+      REDIS_ADDR: ${REDIS_ADDR:-redis:6379}
+      THREAT_CACHE_ENABLED: ${THREAT_CACHE_ENABLED:-false}
+      THREAT_CACHE_TTL: ${THREAT_CACHE_TTL:-10m}
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:8080/metrics"]
       interval: 10s
@@ -70,6 +79,11 @@ services:
       API_PORT: ":8080"
       API_URL: "http://e2e_app:8080"
       DB_URL: "postgres://test:test@test_db:5432/threats_test?sslmode=disable"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:8080/metrics"]
+      interval: 2s
+      timeout: 3s
+      retries: 15
     ports:
       - "127.0.0.1:${E2E_HOST_PORT:-8081}:8080"
     depends_on:

@@ -152,3 +152,35 @@ func (c *Client) Ping(ctx context.Context) (err error) {
 	}
 	return nil
 }
+
+func (c *Client) Version(ctx context.Context) (version string, err error) {
+	conn, closeConn, err := c.connect(ctx)
+	if err != nil {
+		return "", fmt.Errorf("connect to clamd: %w", err)
+	}
+	defer closeConn()
+
+	if err := writeAll(conn, []byte("zVERSION\x00")); err != nil {
+		return "", fmt.Errorf("send clamd VERSION: %w", err)
+	}
+
+	response, err := readResponse(conn)
+	if err != nil {
+		return "", fmt.Errorf("read clamd VERSION: %w", err)
+	}
+
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
+
+	response = strings.TrimSpace(response)
+
+	if !strings.HasPrefix(response, "ClamAV ") {
+		return "", fmt.Errorf(
+			"unexpected clamd VERSION response: %q",
+			response,
+		)
+	}
+
+	return response, nil
+}

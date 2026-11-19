@@ -11,8 +11,12 @@ scrape_configs:
     static_configs:
       - targets:
           - app_api:8080
-          
+
   - job_name: postgres
     static_configs:
       - targets:
           - postgres_exporter:9187
+  - job_name: scanner
+    static_configs:
+      - targets:
+          - scanner:8082

@@ -3,3 +3,12 @@
 .DS_Store
 *.log
 nginx/certs/
+**/certs
+**/*.key
+**/*.pem
+**/*.crt
+**/*.dump
+**/*.backup
+**/*.sql.gz
+**/.env
+**/.env.*

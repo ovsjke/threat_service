@@ -17,6 +17,7 @@ import (
 	"github.com/ovsjke/threat_service/scanner/internal/handler"
 	"github.com/ovsjke/threat_service/scanner/internal/scanning"
 	"github.com/ovsjke/threat_service/scanner/internal/threatclient"
+	"github.com/redis/go-redis/v9"
 )
 
 func main() {
@@ -37,6 +38,56 @@ func run(log *slog.Logger) error {
 	requests, cancelRequests := context.WithCancel(context.Background())
 	defer cancelRequests()
 	engine := &clamav.Client{Address: cfg.ClamAVAddress, DialTimeout: cfg.DialTimeout, Timeout: cfg.EngineTimeout}
+
+	var redisClient *redis.Client
+
+	if cfg.ScannerCacheEnabled {
+		redisClient = redis.NewClient(&redis.Options{
+			Addr:         cfg.RedisAddr,
+			DialTimeout:  cfg.ScannerCacheRedisTimeout,
+			ReadTimeout:  cfg.ScannerCacheRedisTimeout,
+			WriteTimeout: cfg.ScannerCacheRedisTimeout,
+			MaxRetries:   -1,
+		})
+		defer redisClient.Close()
+		pingCtx, cancel := context.WithTimeout(
+			signals,
+			cfg.ScannerCacheRedisTimeout,
+		)
+
+		pingErr := redisClient.Ping(pingCtx).Err()
+		cancel()
+
+		if pingErr != nil {
+			log.Warn(
+				"Redis unavailable, scanner will use ClamAV",
+				"error", pingErr,
+			)
+		} else {
+			log.Info("Scanner Redis connected")
+		}
+
+		versionCtx, cancel := context.WithTimeout(
+			signals,
+			cfg.ScannerCacheVersionTimeout,
+		)
+
+		version, versionErr := engine.Version(versionCtx)
+		cancel()
+
+		if versionErr != nil {
+			log.Warn(
+				"Cannot obtain ClamAV version",
+				"error", versionErr,
+			)
+		} else {
+			log.Info(
+				"ClamAV version detected",
+				"version", version,
+			)
+		}
+	}
+
 	var catalog scanning.ThreatCatalog
 	if cfg.ThreatGRPCAddress != "" {
 		client, err := threatclient.New(cfg.ThreatGRPCAddress)
@@ -46,7 +97,25 @@ func run(log *slog.Logger) error {
 		defer client.Close()
 		catalog = client
 	}
-	service := scanning.NewWithCatalog(engine, catalog, cfg.MaxFileBytes, cfg.MaxConcurrent)
+
+	scanEngine := scanning.NewCachedEngine(
+		engine,
+		engine,
+		redisClient,
+		cfg.ScannerCacheTTL,
+		cfg.ScannerCacheRedisTimeout,
+		cfg.ScannerCacheVersionTimeout,
+		cfg.ScannerCachePolicyVersion,
+		log,
+	)
+
+	service := scanning.NewWithCatalog(
+		scanEngine,
+		catalog,
+		cfg.MaxFileBytes,
+		cfg.MaxConcurrent,
+	)
+
 	srv := &http.Server{
 		Addr:              ":" + cfg.Port,
 		Handler:           &handler.Handler{Service: service, MaxFileBytes: cfg.MaxFileBytes, Timeout: cfg.ScanTimeout, Log: log},

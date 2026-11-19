@@ -12,6 +12,7 @@ import (
 
 	"github.com/ovsjke/threat_service/scanner/internal/clamav"
 	"github.com/ovsjke/threat_service/scanner/internal/scanning"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 const MultipartOverhead int64 = 64 << 10
@@ -66,6 +67,12 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		w.Header().Set("Allow", "POST")
+	case "/metrics":
+		if r.Method == http.MethodGet {
+			promhttp.Handler().ServeHTTP(w, r)
+			return
+		}
+		w.Header().Set("Allow", "GET")
 	default:
 		writeError(w, 404, "not_found", "Endpoint does not exist")
 		return
